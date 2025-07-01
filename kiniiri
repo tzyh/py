@@ -1,0 +1,81 @@
+import os
+import json
+from datetime import datetime
+import getpass
+import pandas as pd
+import shutil
+
+# ユーザー名とデスクトップパス取得
+user = getpass.getuser()
+desktop = os.path.join("C:\\Users", user, "Desktop")
+
+# Excelファイルパス
+excel_path = os.path.join(desktop, "お気に入り.xlsx")
+
+# Chrome Bookmarksファイルパス
+chrome_bookmarks = os.path.join("C:\\Users", user, "AppData\\Local\\Google\\Chrome\\User Data\\Default\\Bookmarks")
+
+# バックアップ
+backup_path = chrome_bookmarks + ".bak"
+if not os.path.exists(backup_path):
+    shutil.copy2(chrome_bookmarks, backup_path)
+
+# Excelの読み込み（カラム名なし、一列のみ、1行目からURL）
+df = pd.read_excel(excel_path, header=None)
+urls = df[0].dropna().astype(str).tolist()
+
+# 日付名
+today_str = datetime.now().strftime('%Y-%m-%d')
+
+# Bookmarksファイルを読み込む
+with open(chrome_bookmarks, 'r', encoding='utf-8') as f:
+    bookmarks = json.load(f)
+
+# お気に入りバー取得
+bookmark_bar = bookmarks['roots']['bookmark_bar']
+
+# 既存の日付フォルダを検索
+folder_node = None
+for child in bookmark_bar.get('children', []):
+    if child['type'] == 'folder' and child['name'] == today_str:
+        folder_node = child
+        break
+
+# フォルダがなければ作成
+if not folder_node:
+    # IDの最大値取得（重複回避のため）
+    existing_ids = [int(c['id']) for c in bookmark_bar.get('children', []) if c.get('id', '').isdigit()]
+    next_id = str(max(existing_ids) + 1) if existing_ids else "1"
+    folder_node = {
+        "type": "folder",
+        "name": today_str,
+        "children": [],
+        "date_added": datetime.now().strftime('%Y%m%d%H%M%S'),
+        "id": next_id
+    }
+    bookmark_bar.setdefault('children', []).append(folder_node)
+
+# 既存URLを取得（重複防止）
+existing_urls = {c['url'] for c in folder_node['children'] if c['type'] == 'url'}
+
+# URL追加
+existing_ids = [int(c['id']) for c in bookmark_bar['children'] if c.get('id', '').isdigit()]
+folder_existing_ids = [int(c['id']) for c in folder_node['children'] if c.get('id', '').isdigit()]
+max_id = max(existing_ids + folder_existing_ids) if (existing_ids + folder_existing_ids) else 1
+
+for url in urls:
+    if url not in existing_urls:
+        max_id += 1
+        folder_node['children'].append({
+            "type": "url",
+            "name": url,     # 名前はURLそのもの
+            "url": url,
+            "date_added": datetime.now().strftime('%Y%m%d%H%M%S'),
+            "id": str(max_id)
+        })
+
+# Bookmarksファイルを上書き
+with open(chrome_bookmarks, 'w', encoding='utf-8') as f:
+    json.dump(bookmarks, f, ensure_ascii=False, indent=4)
+
+print("完了：Chromeを再起動して確認してください。")
