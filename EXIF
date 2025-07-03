@@ -1,0 +1,37 @@
+from PIL import Image
+import os
+
+def extract_exif_info(image_path):
+    try:
+        img = Image.open(image_path)
+        exif_data = img._getexif()
+        if not exif_data:
+            return {}
+        # 人間が読めるタグ名に変換
+        from PIL.ExifTags import TAGS, GPSTAGS
+        exif = {}
+        for tag_id, value in exif_data.items():
+            tag = TAGS.get(tag_id, tag_id)
+            exif[tag] = value
+        return exif
+    except Exception as e:
+        print(f"Error processing {image_path}: {e}")
+        return {}
+
+def main():
+    # 対象フォルダを指定
+    target_folder = "images"  # 例: ./images フォルダ内の全画像
+    for filename in os.listdir(target_folder):
+        if filename.lower().endswith(('.jpg', '.jpeg', '.tiff')):
+            image_path = os.path.join(target_folder, filename)
+            exif = extract_exif_info(image_path)
+            print(f"==== {filename} ====")
+            if exif:
+                for k, v in exif.items():
+                    print(f"{k}: {v}")
+            else:
+                print("No EXIF data found.")
+            print()
+
+if __name__ == "__main__":
+    main()
