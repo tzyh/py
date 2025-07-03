@@ -1,2 +1,2 @@
 
-[収集したURLをChromeのお気に入りバーに入れる6](kiniiri.py)
+[収集したURLをChromeのお気に入りバーに入れる6](kiniiri)
