@@ -1,35 +1,59 @@
-import praw
+import requests
+from bs4 import BeautifulSoup
+import time
 
-# Reddit API credentials (Replace with your own values)
-CLIENT_ID = 'YOUR_CLIENT_ID'
-CLIENT_SECRET = 'YOUR_CLIENT_SECRET'
-USER_AGENT = 'script:reddit_japan_trump:v1.0 (by u/YOUR_USERNAME)'
+KEYWORD = "Trump"
+SUBREDDIT = "japan"
+BASE_URL = f"https://old.reddit.com/r/{SUBREDDIT}/search"
+HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-# Initialize Reddit instance
-reddit = praw.Reddit(
-    client_id=CLIENT_ID,
-    client_secret=CLIENT_SECRET,
-    user_agent=USER_AGENT
-)
+# クエリパラメータを設定
+params = {
+    "q": KEYWORD,
+    "restrict_sr": 1,
+    "sort": "new",
+    "t": "all"
+}
 
-# Set subreddit and keyword
-subreddit_name = 'japan'
-keyword = 'Trump'
-
-# Store results
 threads = []
+after = None
+page_count = 0
+MAX_PAGES = 5  # 取得するページ数を調整
 
-# Fetch threads from the subreddit (you can adjust limit as needed)
-for submission in reddit.subreddit(subreddit_name).search(keyword, sort='new', limit=100):
-    if keyword.lower() in submission.title.lower():
-        thread_data = {
-            'title': submission.title,
-            'url': submission.url,
-            'selftext': submission.selftext
-        }
-        threads.append(thread_data)
+while page_count < MAX_PAGES:
+    if after:
+        params["after"] = after
+    response = requests.get(BASE_URL, params=params, headers=HEADERS)
+    soup = BeautifulSoup(response.text, "html.parser")
+    posts = soup.find_all("div", class_="search-result")
+    for post in posts:
+        title_tag = post.find("a", class_="search-title")
+        if not title_tag:
+            continue
+        title = title_tag.text
+        if KEYWORD.lower() in title.lower():
+            url = title_tag["href"]
+            # 本文取得（スレッドのリンク先をさらにリクエスト）
+            post_resp = requests.get(url, headers=HEADERS)
+            post_soup = BeautifulSoup(post_resp.text, "html.parser")
+            selftext_tag = post_soup.find("div", class_="usertext-body")
+            selftext = selftext_tag.text.strip() if selftext_tag else ""
+            threads.append({
+                "title": title,
+                "url": url,
+                "selftext": selftext
+            })
+            time.sleep(1)  # 負荷軽減のため待機
+    # 次のページへのリンクを取得
+    next_button = soup.find("span", class_="next-button")
+    if next_button:
+        after = next_button.a["href"].split("after=")[-1]
+        page_count += 1
+        time.sleep(2)  # 負荷軽減
+    else:
+        break
 
-# Output the collected data
+# 結果表示
 for i, thread in enumerate(threads, 1):
     print(f"--- Thread {i} ---")
     print("Title:", thread['title'])
@@ -37,8 +61,3 @@ for i, thread in enumerate(threads, 1):
     print("Body:")
     print(thread['selftext'])
     print("\n")
-
-# Optionally, save to a file
-# import json
-# with open('japan_trump_threads.json', 'w', encoding='utf-8') as f:
-#     json.dump(threads, f, ensure_ascii=False, indent=2)
